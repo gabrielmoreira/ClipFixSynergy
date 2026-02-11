@@ -1,57 +1,40 @@
 # ClipFixSynergy
 
-Fixes broken image clipboard transfers from macOS to Windows when using Synergy 3.
+Adds PNG and JPEG formats to the Windows clipboard when Synergy 3 only provides DIB, improving compatibility with browsers and apps such as ChatGPT upload fields.
 
-Adds PNG and JPEG formats to the Windows clipboard when Synergy only provides DIB, improving compatibility with browsers and apps like ChatGPT upload fields.
+---
+
+## Download
+
+Prebuilt binaries are available in the **Releases** section:
+
+https://github.com/gabrielmoreira/ClipFixSynergy/releases
+
+Download the latest:
+
+ClipFixSynergy-x.y.z-win-x64.zip
+
+Extract and run `ClipFixSynergy.exe`.
+
+No installation required.
 
 ---
 
 ## Quick Start
 
-### 1. Build
-
-```
-dotnet build -c Release
-```
-
-> Tip: Install dotnet if you don't have it.
->   `winget install -e --id Microsoft.DotNet.SDK.8`
-
-### 2. Run
-
-GUI only mode:
-
-```
-dotnet run -c Release
-```
-
-Or run compiled binary:
-
-```
-bin\Release\net8.0-windows\ClipFixSynergy.exe
-```
-
-
-
-Debug mode with logs:
-
-```
-dotnet run -c Debug -- --debug
-```
-
-Or run compiled binary:
-
-```
-bin\Debug\net8.0-windows\ClipFixSynergy.exe
-```
+Run the executable.
 
 The app runs in the system tray.
+
+Status colors:
 
 Blue = running  
 Yellow = processing  
 Green = success  
 Red = error  
 Gray = paused  
+
+That’s it.
 
 ---
 
@@ -65,46 +48,55 @@ When copying screenshots from macOS to Windows using Synergy:
   - Corrupted image
   - Upload failure
 
-Root cause:  
-Synergy often sends only CF_DIB / CF_DIBV5 bitmap formats, without PNG or JPEG clipboard formats. Some Windows apps decode the DIB incorrectly.
+Root cause:
+
+Synergy often sends only CF_DIB / CF_DIBV5 bitmap formats without PNG or JPEG clipboard formats.
+
+Some Windows apps decode these DIB structures incorrectly.
+
+This issue was observed with Synergy 3.x (tested on 3.5.1). Behavior may vary in other versions.
 
 ClipFixSynergy:
 
 - Detects Synergy-origin clipboard content
-- Decodes the DIB safely
+- Safely decodes the DIB
 - Re-injects:
   - PNG
   - image/png
   - JFIF
   - image/jpeg
-- Adds a done marker to avoid loops
+- Adds a done marker to prevent processing loops
+
+This restores compatibility with modern applications.
 
 ---
 
 ## Detecting Original macOS Capture Mode
 
-The app now includes a heuristic to infer whether the screenshot was taken as PNG or JPG on macOS.
+Synergy transfers bitmap data only.
 
-It does not detect file format directly, because Synergy sends bitmap data only.
+The original file format is not directly available.
 
-Instead, it inspects:
+The app attempts to infer whether the macOS screenshot was PNG or JPG by inspecting:
 
 - Bits per pixel
 - Compression type
-- Header size vs actual pixel offset
+- Header size vs derived pixel offset
 
-Heuristic rules:
+Heuristic observations:
 
 - 32bpp + BI_BITFIELDS + header mismatch → likely PNG pipeline
 - 24bpp + BI_RGB + consistent header → likely JPG pipeline
 
-The detected source hint appears in logs and tray status.
+The detected hint appears in logs and tray status.
+
+This is heuristic, not guaranteed.
 
 ---
 
 ## Advanced Debug Mode
 
-Enable deep inspection:
+For deep inspection:
 
 ```
 dotnet run -c Debug -- ^
@@ -120,17 +112,19 @@ dotnet run -c Debug -- ^
   --jpegq=100
 ```
 
-This will:
+This enables:
 
-- Dump original DIB
-- Dump generated PNG/JPEG
-- Generate SHA1 fingerprints
-- Sample alpha channel
-- Log structural differences
+- Original DIB dump
+- Generated PNG/JPEG dump
+- SHA1 fingerprinting
+- Alpha sampling
+- Structural comparison
+
+Useful when investigating Synergy behavior differences.
 
 ---
 
-## How To Generate Controlled macOS Test Captures
+## Controlled macOS Test Captures
 
 Use fixed region capture for reproducibility.
 
@@ -148,13 +142,11 @@ screencapture -x -t jpg -R 200,200,800,400 -c
 
 This copies directly to clipboard and triggers Synergy transfer.
 
-Run once with:
+Tag runs separately:
 
 ```
 --tag=mac_png
 ```
-
-Then again with:
 
 ```
 --tag=mac_jpg
@@ -164,51 +156,36 @@ You can then zip the dump folder and compare both pipelines.
 
 ---
 
-## Running With or Without Console
+## Build From Source
 
-This project is configured to build two variants automatically:
+Requires .NET 8 SDK.
 
-- Debug: console app (OutputType=Exe)
-- Release: tray-only app (OutputType=WinExe)
+Install if needed:
+
+```
+winget install -e --id Microsoft.DotNet.SDK.8
+```
 
 Build:
 
 ```
-dotnet build -c Debug
 dotnet build -c Release
 ```
 
-Run:
+Debug build:
 
 ```
-dotnet run -c Debug -- --debug
-dotnet run -c Release
+dotnet build -c Debug
 ```
 
-Executable outputs:
-
-```
-bin\Debug\net8.0-windows\ClipFixSynergy.exe
-bin\Release\net8.0-windows\ClipFixSynergy.exe
-```
+Release builds produce a tray-only executable.  
+Debug builds include console output.
 
 ---
 
-## Prevent Multiple Instances
+## Start With Windows
 
-The app detects if another instance is already running.
-
-If so, it shows:
-
-"ClipFixSynergy is already running."
-
-And exits.
-
----
-
-## Install To Start With Windows
-
-### Option 1: Startup Folder
+Option 1: Startup folder
 
 Press Win + R:
 
@@ -216,26 +193,20 @@ Press Win + R:
 shell:startup
 ```
 
-Create shortcut to:
+Create a shortcut to `ClipFixSynergy.exe`.
 
-```
-ClipFixSynergy.exe
-```
-
-### Option 2: Task Scheduler
-
-Create new task:
+Option 2: Task Scheduler
 
 - Trigger: At log on
 - Action: Start program
-- Program path: full path to ClipFixSynergy.exe
+- Program path: Full path to ClipFixSynergy.exe
 
 ---
 
-## Why This Exists
+## Technical Deep Dive
 
 <details>
-<summary>Technical Deep Dive</summary>
+<summary>Expand technical investigation details</summary>
 
 The original issue:
 
@@ -244,13 +215,13 @@ Clipboard images transferred from macOS to Windows via Synergy appeared corrupte
 Investigation revealed:
 
 - Synergy provides CF_DIB / CF_DIBV5
-- Sometimes BI_BITFIELDS with inconsistent header size
+- Sometimes BI_BITFIELDS with inconsistent header structure
 - No PNG or JPEG formats provided
 - Some decoders misinterpret stride or masks
 
 We confirmed:
 
-- macOS PNG capture produces 32bpp BI_BITFIELDS with header mismatch
+- macOS PNG capture produces 32bpp BI_BITFIELDS with header/pixel offset mismatch
 - macOS JPG capture produces 24bpp BI_RGB with consistent header
 - After conversion and re-injection of PNG/JPEG formats, browser compatibility is restored
 
@@ -268,9 +239,7 @@ MIT
 
 ## Contributing
 
-Feel free to open issues or submit improvements.
-
-If you are reporting a Synergy-related issue, include:
+If reporting a Synergy-related issue, include:
 
 - DIB dump
 - Generated PNG and JPG
@@ -282,6 +251,6 @@ If you are reporting a Synergy-related issue, include:
 
 ## Final Notes
 
-This tool was created as a investigation into a clipboard interoperability issue between macOS and Windows using Synergy.
+This tool was created during a deep investigation into clipboard interoperability issues between macOS and Windows using Synergy.
 
-It can also serve as a clipboard diagnostic tool for advanced debugging of image transfer pipelines.
+It can also serve as a diagnostic tool for advanced clipboard debugging.
