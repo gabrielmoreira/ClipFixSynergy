@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Debug, Release]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/packages.lock.json', '**/Directory.Packages.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build (${{ matrix.config }})
+        run: dotnet build -c ${{ matrix.config }} --no-restore
+
+      - name: Upload build artifact (${{ matrix.config }})
+        if: matrix.config == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-release
+          path: |
+            bin/Release/
+          if-no-files-found: warn
+
+  release:
+    name: Release
+    runs-on: windows-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Compute version
+        id: ver
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"     # e.g. v1.2.3
+          $ver = $tag.TrimStart("v")
+          $sha = "${{ github.sha }}"
+          $short = $sha.Substring(0, 12)
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "ver=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "short=$short" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Publish (win-x64, single-file)
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.ver }}"
+          $sha = "${{ steps.ver.outputs.sha }}"
+
+          dotnet publish -c Release -r win-x64 --self-contained false -o out `
+            -p:PublishSingleFile=true `
+            -p:Version=$ver `
+            -p:InformationalVersion="$ver+$sha" `
+            -p:SourceRevisionId=$sha
+
+      - name: Create zip
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.ver.outputs.ver }}"
+          $zip = "ClipFixSynergy-$ver-win-x64.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path out\* -DestinationPath $zip
+          "zip=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        id: pack
+
+      - name: SHA256
+        shell: pwsh
+        run: |
+          $zip = "${{ steps.pack.outputs.zip }}"
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $out = "$zip.sha256"
+          "$hash  $zip" | Out-File $out -Encoding ascii
+          "sha_file=$out" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        id: sha
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.pack.outputs.zip }}
+            ${{ steps.sha.outputs.sha_file }}
