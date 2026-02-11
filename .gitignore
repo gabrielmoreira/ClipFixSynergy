@@ -1,0 +1,29 @@
+# Build folders
+bin/
+obj/
+
+# User-specific
+*.user
+*.suo
+*.userosscache
+*.rsuser
+
+# Visual Studio / Rider
+.vs/
+.idea/
+
+# Logs
+*.log
+
+# Dumps and temporary debug
+tmp/
+dump/
+example.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Publish
+publish/
+example/dump/
