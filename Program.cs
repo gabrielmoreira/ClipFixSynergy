@@ -15,8 +15,65 @@ using System.Windows.Forms;
 static class AppInfo
 {
   public const string Name = "ClipFixSynergy";
-  public static string Version =>
-    Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0.0.0.0";
+  public const string RepoUrl = "https://github.com/gabrielmoreira/ClipFixSynergy";
+
+  public static string InformationalVersion =>
+    Assembly.GetExecutingAssembly()
+      .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+      .InformationalVersion
+    ?? "0.0.0+unknown";
+
+  public static string Version
+  {
+    get
+    {
+      var (v, _) = ParseInfo(InformationalVersion);
+      return v;
+    }
+  }
+
+  public static string CommitShort
+  {
+    get
+    {
+      var (_, c) = ParseInfo(InformationalVersion);
+      if (string.IsNullOrWhiteSpace(c)) return "";
+      return c.Length > 12 ? c.Substring(0, 12) : c;
+    }
+  }
+
+  public static string DisplayTitle
+  {
+    get
+    {
+      var c = CommitShort;
+      return string.IsNullOrWhiteSpace(c) ? $"{Name} v{Version}" : $"{Name} v{Version} ({c})";
+    }
+  }
+
+  public static string CommitUrl
+  {
+    get
+    {
+      var c = CommitShort;
+      return string.IsNullOrWhiteSpace(c) ? RepoUrl : $"{RepoUrl}/commit/{c}";
+    }
+  }
+
+  public static string ReleasesUrl => $"{RepoUrl}/releases";
+
+  private static (string Version, string Commit) ParseInfo(string info)
+  {
+    // expected formats:
+    // "1.2.3+abcdef..." (from workflow)
+    // "1.2.3"          (fallback)
+    // "0.0.0+local"
+    int plus = info.IndexOf('+');
+    if (plus < 0) return (info, "");
+    string v = info.Substring(0, plus);
+    string c = (plus + 1 < info.Length) ? info.Substring(plus + 1) : "";
+    return (string.IsNullOrWhiteSpace(v) ? "0.0.0" : v, c);
+  }
 }
 
 static class Log
@@ -321,6 +378,20 @@ sealed class TrayController : IDisposable
 
   public event Action<bool>? PauseChanged;
 
+  private static void OpenUrl(string url)
+  {
+    try
+    {
+      var psi = new System.Diagnostics.ProcessStartInfo
+      {
+        FileName = url,
+        UseShellExecute = true
+      };
+      System.Diagnostics.Process.Start(psi);
+    }
+    catch { }
+  }
+
   public TrayController(SynchronizationContext ui)
   {
     _ui = ui;
@@ -333,10 +404,17 @@ sealed class TrayController : IDisposable
 
     var menu = new ContextMenuStrip();
 
-    _titleItem = new ToolStripMenuItem($"{AppInfo.Name} v{AppInfo.Version}")
+    _titleItem = new ToolStripMenuItem(AppInfo.DisplayTitle)
     {
-      Enabled = false
+      Enabled = true
     };
+    _titleItem.Click += (_, __) => OpenUrl(AppInfo.CommitUrl);
+
+    var openRepo = new ToolStripMenuItem("Open GitHub repo");
+    openRepo.Click += (_, __) => OpenUrl(AppInfo.RepoUrl);
+
+    var openReleases = new ToolStripMenuItem("Check for updates");
+    openReleases.Click += (_, __) => OpenUrl(AppInfo.ReleasesUrl);
 
     _pauseResumeItem = new ToolStripMenuItem("Pause");
     _pauseResumeItem.Click += (_, __) => TogglePause();
@@ -345,6 +423,8 @@ sealed class TrayController : IDisposable
     _exitItem.Click += (_, __) => Application.Exit();
 
     menu.Items.Add(_titleItem);
+    menu.Items.Add(openRepo);
+    menu.Items.Add(openReleases);
     menu.Items.Add(new ToolStripSeparator());
     menu.Items.Add(_pauseResumeItem);
     menu.Items.Add(new ToolStripSeparator());

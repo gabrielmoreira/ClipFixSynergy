@@ -10,6 +10,19 @@
     <!-- Debug shows console, Release is tray-only (no console window) -->
     <OutputType Condition="'$(Configuration)' == 'Release'">WinExe</OutputType>
     <OutputType Condition="'$(Configuration)' != 'Release'">Exe</OutputType>
+
+    <RepositoryUrl>https://github.com/gabrielmoreira/ClipFixSynergy</RepositoryUrl>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+
+    <!-- default; o pipeline vai sobrescrever -->
+    <Version>0.0.0</Version>
+    <InformationalVersion>0.0.0+local</InformationalVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
 
 </Project>
